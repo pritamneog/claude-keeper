@@ -190,8 +190,14 @@ cmd_test() {
 
     # Show what would happen
     echo "What would happen on 'claude-keeper run':"
+    local brew_cask=""
+    if [[ "${method}" == "homebrew" ]]; then
+        local brew_bin
+        brew_bin="$(_find_cmd "brew" "${_BREW_PATHS[@]}")" && \
+            brew_cask="$(detect_brew_claude_cask "${brew_bin}" 2>/dev/null || true)"
+    fi
     case "${method}" in
-        homebrew)        echo "  -> brew upgrade claude-code" ;;
+        homebrew)        echo "  -> brew upgrade --cask ${brew_cask:-claude-code}" ;;
         npm)             echo "  -> npm install -g @anthropic-ai/claude-code" ;;
         winget)          echo "  -> winget upgrade Anthropic.ClaudeCode" ;;
         native)          echo "  -> claude update (safety net; native auto-updates)" ;;

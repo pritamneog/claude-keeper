@@ -75,15 +75,37 @@ output="$(run_upgrade "flatpak" 2>&1)" || true
 assert_contains "${output}" "Unknown install method" "unknown method returns error"
 
 # Test: brew upgrade is called for homebrew
+# Mock brew that (a) claims `claude-code` cask is installed for detection,
+# (b) echoes the dispatched upgrade command.
 cat > "${MOCK_DIR}/brew" << 'MOCK'
 #!/usr/bin/env bash
+if [[ "${1:-}" == "list" ]]; then
+    # Detection: only stable cask "installed"
+    [[ "${3:-}" == "claude-code" ]]
+    exit $?
+fi
 echo "mock: brew $*"
 exit 0
 MOCK
 chmod +x "${MOCK_DIR}/brew"
 
 output="$(run_upgrade "homebrew" 2>&1)"
-assert_contains "${output}" "mock: brew upgrade claude-code" "homebrew dispatches to brew upgrade"
+assert_contains "${output}" "mock: brew upgrade --cask claude-code" "homebrew dispatches to brew upgrade --cask (stable)"
+
+# Test: when @latest cask is installed, upgrade targets it
+cat > "${MOCK_DIR}/brew" << 'MOCK'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "list" ]]; then
+    [[ "${3:-}" == "claude-code@latest" ]]
+    exit $?
+fi
+echo "mock: brew $*"
+exit 0
+MOCK
+chmod +x "${MOCK_DIR}/brew"
+
+output="$(run_upgrade "homebrew" 2>&1)"
+assert_contains "${output}" "mock: brew upgrade --cask claude-code@latest" "homebrew dispatches to brew upgrade --cask claude-code@latest"
 
 # Test: npm install is called for npm
 cat > "${MOCK_DIR}/npm" << 'MOCK'

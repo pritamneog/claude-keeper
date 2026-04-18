@@ -34,7 +34,9 @@ run_upgrade() {
         homebrew)
             local brew_bin
             brew_bin="$(_resolve_cmd "brew" "${_BREW_PATHS[@]}")"
-            _run_upgrade_command "${brew_bin}" upgrade claude-code
+            local cask
+            cask="$(detect_brew_claude_cask "${brew_bin}" 2>/dev/null)" || cask="claude-code"
+            _run_upgrade_command "${brew_bin}" upgrade --cask "${cask}"
             ;;
         npm)
             local npm_bin

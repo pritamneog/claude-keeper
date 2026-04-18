@@ -58,12 +58,39 @@ export PATH="${MOCK_DIR}:${PATH}"
 echo "=== detect.sh tests ==="
 echo ""
 
-# Test: homebrew detected when brew list succeeds
+# Test: homebrew detected when brew list succeeds (stable cask)
 remove_mock "brew"
 remove_mock "npm"
-create_mock "brew" 0 "claude-code"
+# Mock: `brew list --cask claude-code@latest` fails, `claude-code` succeeds
+cat > "${MOCK_DIR}/brew" << 'MOCK'
+#!/usr/bin/env bash
+# Args: list --cask <name>
+if [[ "${3:-}" == "claude-code" ]]; then exit 0; fi
+exit 1
+MOCK
+chmod +x "${MOCK_DIR}/brew"
 result="$(detect_install_method)"
-assert_eq "${result}" "homebrew" "detect homebrew when brew list succeeds"
+assert_eq "${result}" "homebrew" "detect homebrew when stable cask is installed"
+
+# Test: homebrew detected when claude-code@latest cask is installed
+cat > "${MOCK_DIR}/brew" << 'MOCK'
+#!/usr/bin/env bash
+if [[ "${3:-}" == "claude-code@latest" ]]; then exit 0; fi
+exit 1
+MOCK
+chmod +x "${MOCK_DIR}/brew"
+result="$(detect_install_method)"
+assert_eq "${result}" "homebrew" "detect homebrew when @latest cask is installed"
+
+# Test: detect_brew_claude_cask prefers @latest when both installed
+cat > "${MOCK_DIR}/brew" << 'MOCK'
+#!/usr/bin/env bash
+# Both casks "installed"
+exit 0
+MOCK
+chmod +x "${MOCK_DIR}/brew"
+result="$(detect_brew_claude_cask "${MOCK_DIR}/brew")"
+assert_eq "${result}" "claude-code@latest" "prefer @latest cask when both present"
 
 # Test: npm detected when brew fails but npm succeeds
 remove_mock "brew"
@@ -74,7 +101,12 @@ assert_eq "${result}" "npm" "detect npm when brew fails but npm succeeds"
 
 # Test: homebrew wins over npm when both present
 remove_mock "brew"
-create_mock "brew" 0 "claude-code"
+cat > "${MOCK_DIR}/brew" << 'MOCK'
+#!/usr/bin/env bash
+if [[ "${3:-}" == "claude-code" ]]; then exit 0; fi
+exit 1
+MOCK
+chmod +x "${MOCK_DIR}/brew"
 create_mock "npm" 0 "@anthropic-ai/claude-code"
 result="$(detect_install_method)"
 assert_eq "${result}" "homebrew" "homebrew wins priority over npm"
@@ -96,8 +128,16 @@ fi
 echo "SKIP: native detection (would modify ~/.local/bin)"
 
 # Test: describe_method outputs correctly
+# describe_method for homebrew is now dynamic (reports actual cask);
+# just verify it starts with the expected prefix and names a known cask.
+cat > "${MOCK_DIR}/brew" << 'MOCK'
+#!/usr/bin/env bash
+if [[ "${3:-}" == "claude-code@latest" ]]; then exit 0; fi
+exit 1
+MOCK
+chmod +x "${MOCK_DIR}/brew"
 desc="$(describe_method "homebrew")"
-assert_eq "${desc}" "Homebrew (brew upgrade claude-code)" "describe homebrew method"
+assert_eq "${desc}" "Homebrew (brew upgrade --cask claude-code@latest)" "describe homebrew method with @latest cask"
 
 desc="$(describe_method "npm")"
 assert_eq "${desc}" "npm (npm install -g @anthropic-ai/claude-code)" "describe npm method"

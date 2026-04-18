@@ -11,6 +11,12 @@ readonly _BREW_PATHS=("/opt/homebrew/bin/brew" "/usr/local/bin/brew" "/home/linu
 readonly _NPM_PATHS=("/opt/homebrew/bin/npm" "/usr/local/bin/npm")
 readonly _CLAUDE_NATIVE_PATH="${HOME}/.local/bin/claude"
 
+# Known Homebrew cask names for Claude Code, in preferred order.
+# `claude-code@latest` tracks the latest (non-stable) release channel;
+# `claude-code` is the stable cask. We check both so users on either
+# channel get auto-updated.
+readonly _BREW_CLAUDE_CASKS=("claude-code@latest" "claude-code")
+
 # Find a command by name, falling back to well-known paths.
 # Usage: _find_cmd "brew" "${_BREW_PATHS[@]}"
 # Prints the resolved path, or empty string if not found.
@@ -34,6 +40,20 @@ _find_cmd() {
     return 1
 }
 
+# Return the first installed Homebrew cask name for Claude Code, or fail.
+# Checks `claude-code@latest` before `claude-code` so the latest channel wins.
+detect_brew_claude_cask() {
+    local brew_bin="$1"
+    local cask
+    for cask in "${_BREW_CLAUDE_CASKS[@]}"; do
+        if "${brew_bin}" list --cask "${cask}" &>/dev/null 2>&1; then
+            printf '%s' "${cask}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Detect the Claude Code installation method.
 # Prints one of: homebrew, npm, winget, native, unknown_in_path, not_installed
 detect_install_method() {
@@ -41,7 +61,7 @@ detect_install_method() {
     local brew_bin
     brew_bin="$(_find_cmd "brew" "${_BREW_PATHS[@]}")" || true
     if [[ -n "${brew_bin}" ]]; then
-        if "${brew_bin}" list --cask claude-code &>/dev/null 2>&1; then
+        if detect_brew_claude_cask "${brew_bin}" >/dev/null; then
             printf 'homebrew'
             return 0
         fi
@@ -98,7 +118,12 @@ get_claude_version() {
 describe_method() {
     local method="$1"
     case "${method}" in
-        homebrew)        echo "Homebrew (brew upgrade claude-code)" ;;
+        homebrew)
+            local brew_bin cask=""
+            brew_bin="$(_find_cmd "brew" "${_BREW_PATHS[@]}")" && \
+                cask="$(detect_brew_claude_cask "${brew_bin}" 2>/dev/null || true)"
+            echo "Homebrew (brew upgrade --cask ${cask:-claude-code})"
+            ;;
         npm)             echo "npm (npm install -g @anthropic-ai/claude-code)" ;;
         winget)          echo "WinGet (winget upgrade Anthropic.ClaudeCode)" ;;
         native)          echo "Native installer (claude update)" ;;
